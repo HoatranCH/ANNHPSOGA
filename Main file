@@ -1,0 +1,398 @@
+%% empty space 
+clc 
+clear
+tic 
+rng default
+% check data without training
+% This code line only use for 1 oupput
+filename1 = 'Case1_test.xlsx';
+sheetname11 = 'Sheet1'; 
+sheetname22 = 'Sheet2';
+input11 = xlsread(filename1,sheetname11,'A1:Z40000'); 
+target11 = xlsread(filename1,sheetname22,'A1:Z40000');
+inputs11=input11';
+targets11=target11';
+%
+%%
+filename = 'Case1a.xlsx';
+sheetname1 = 'Sheet1'; 
+sheetname2 = 'Sheet2'; 
+input = xlsread(filename,sheetname1,'A1:Z40000'); 
+target = xlsread(filename,sheetname2,'A1:Z40000'); 
+% x = awgn(inputs,86.37455,'measured');
+inputs=awgn(input',105,'measured');
+targets=target';
+number_input=length(inputs(:,1));
+number_output=length(targets(:,1));
+number_hidden=20; 
+
+%% Feedforwardnet method
+% 
+net=feedforwardnet(number_hidden); 
+net=configure(net,inputs,targets); 
+
+%% This line will check numWeightElements(nWE)
+nWE=number_hidden*number_input+number_output*number_hidden+number_hidden+number_output; 
+
+CostFunction=@(x) CostFunction_IBeam_2output(x,number_hidden,number_input,number_output,net,inputs,targets);
+
+tic;
+%% Initialization Boundary of weight, b ,.. sigmoid
+Boundary = zeros (nWE,2);
+for i = 1:nWE
+Boundary(i,1)=-1;
+Boundary(i,2)=1;
+end
+%% Parameters
+MaxIt=100;
+% MaxIt=200;
+nPop=100;
+
+%% CS Parameters
+% Discovery rate of alien eggs/solutions
+pa=0.25;
+nVar=length(Boundary); % khong gian tim kiem
+VarSize=[1 nVar];
+VarMax=Boundary(:,2);
+VarMin=Boundary(:,1);
+%% GA parameters
+pc=0.7;                 % Crossover Percentage, Phan tram lai cheo
+nc=2*round(pc*nPop/2);  % Number of Offsprings (also Parnets), So phan tu duoc phep lai cheo
+gamma_ga=0.4;              % Extra Range Factor for Crossover
+
+pm=0.3;                 % Mutation Percentage
+nm=round(pm*nPop);      % Number of Mutants
+mu=0.1;         % Mutation Rate
+beta=8;
+
+%% Template of Population
+% Population
+empty_individual.Position=[];
+empty_individual.Cost=[];
+
+pop=repmat(empty_individual,nPop,1);
+
+% Paticle
+empty_particle.Position=[];
+empty_particle.Cost=[];
+empty_particle.Velocity=[];
+empty_particle.Best.Position=[];
+empty_particle.Best.Cost=[];
+
+% Global Best
+GlobalBest.Cost=inf;
+
+
+% Khoi tao ngau nhien vi tri cua hat, vector,...
+for i=1:nPop
+    
+    for j=1:nVar
+    % Tao ngau nghien vi tri tu VarMin den VarMax cho VarSize phan tu
+    pop(i).Position(1,j)=unifrnd(VarMin(j,1),VarMax(j,1));
+    end
+    % Tinh gia tri cua vi tri do
+    pop(i).Cost=CostFunction(pop(i).Position(1,:));      
+    
+    % Nhap vi tri cho hat
+    particle(i).Position=pop(i).Position;          
+    
+    % Tao ma tran van toc choi VarSize kich thuoc
+    
+    particle(i).Velocity=zeros(VarSize);            
+    
+    % Lay gia tri tinh duoc cua Ham cho tung gia tri cua hat
+    particle(i).Cost=pop(i).Cost;                   
+    
+    % Cap nhat vi tri tot nhat cua Hat
+    particle(i).Best.Position=particle(i).Position; % Vi tri tot nhat cua Hat
+    particle(i).Best.Cost=particle(i).Cost;         % Gia tri tot nhat tuong ung cua hat
+    
+    % Cap nhat vi tri tot nhat toan cau
+    if particle(i).Best.Cost<GlobalBest.Cost
+        
+        GlobalBest=particle(i).Best;        % So sanh gia tri tot nhat cua Hat voi Nhom
+        
+    end
+end
+
+
+Costs=[pop.Cost];                   % Dinh nghia gia tri
+
+% Lay gia tri sap xep tu nho den lon theo cot, va thu tu sap xep cua no
+[Costs, SortOrder]=sort(Costs);     
+pop=pop(SortOrder);
+
+% Lay gia tri tot nhat sau khi sap xep
+BestSol=pop(1);                     
+
+% Tao ma tran luu giu nhung gia tri tot nhat 
+BestCost=zeros(MaxIt,1);            
+
+% Gia tri xau nhat
+WorstCost=pop(end).Cost;        
+
+generation=0;    
+tolerance=1;
+while generation<MaxIt && tolerance>10^-12
+generation=generation+1;
+ %%   
+    % Su dung CS tao ra dan so cua GA
+    % Get new solution but keep current best
+    % Levy exponent and coefficient
+    % For details, see equation (2.21), Page 16 (chapter 2) of the book
+    % X. S. Yang, Nature-Inspired Metaheuristic Algorithms, 2nd Edition, Luniver Press, (2010).
+    beta_CS=3/2;
+    sigma_CS=(gamma(1+beta_CS)*sin(pi*beta_CS/2)/(gamma((1+beta_CS)/2)*beta_CS*2^((beta_CS-1)/2)))^(1/beta_CS);
+%     sigma_CS=0.6966;
+    for i = 1:nPop
+    nest(i,:) = vertcat(particle(i).Best.Position);
+    end
+    for i = 1 : nPop
+        s=nest(i,:);
+        u=randn(size(s))*sigma_CS;
+        v=randn(size(s));
+        step=u./abs(v).^(1/beta_CS); 
+        stepsize=0.01*step.*(s-GlobalBest.Position);
+        % Now the actual random walks or flights
+        % Update Position
+        s=s+stepsize.*randn(size(s)); 
+        
+        % Apply limit Position
+        for j = 1:nVar
+        s(1,j) = max(s(1,j),VarMin(j,1));
+        s(1,j) = min(s(1,j),VarMax(j,1));
+        end
+        
+        particle(i).New.Position=s;
+        particle(i).New.Cost=CostFunction(particle(i).New.Position);
+        if particle(i).New.Cost < particle(i).Best.Cost
+            particle(i).Best=particle(i).New;
+            if particle(i).Best.Cost < GlobalBest.Cost
+                GlobalBest=particle(i).Best;
+            end
+        end
+    end
+    % Discovery and randomization
+    for i = 1:nPop
+    nest(i,:) = vertcat(particle(i).Best.Position);
+    end
+    % Discovered or not -- a status vector
+    K=rand(size(nest))>pa;
+    % New solution by biased/selective random walks
+    stepsize=rand*(nest(randperm(nPop),:)-nest(randperm(nPop),:));
+    % Update Position
+    new_nest=nest+stepsize.*K;
+    for i = 1:nPop
+        s=new_nest(i,:);
+        % Apply Limits
+        for j = 1:nVar
+        s(1,j) = max(s(1,j),VarMin(j,1));
+        s(1,j) = min(s(1,j),VarMax(j,1));
+        end
+        particle(i).New.Position=s;
+        % Evaluate
+        particle(i).New.Cost=CostFunction(particle(i).New.Position);
+        if particle(i).New.Cost < particle(i).Best.Cost
+            particle(i).Best=particle(i).New;
+            if particle(i).Best.Cost < GlobalBest.Cost
+                GlobalBest=particle(i).Best;
+            end
+        end
+    end
+        % Cap nhat tro lai cho dan so
+    for i=1:nPop
+        if particle(i).Best.Cost < pop(i).Cost
+            pop(i).Position = particle(i).Best.Position;
+            pop(i).Cost = particle(i).Best.Cost;
+            if pop(i).Cost<GlobalBest.Cost
+                GlobalBest.Cost=pop(i).Cost;
+                GlobalBest.Position=pop(i).Position;
+            end
+        end
+    end
+
+%-------------------------------End Cuckoo Search-------------------------------------------%    
+%%
+%-----------------------------------Start GA -----------------------------------------------%
+
+    P=exp(-beta*Costs/WorstCost);   % p(0)=e^(-beta*Costs/WorstCost)
+    P=P/sum(P);  
+    
+    % Khoi tao kich thuoc ma tran population crossover theo hang
+    pop_crossover=repmat(empty_individual,nc/2,2);
+    % Chon 1 nua trong so phan tu duoc lai cheo
+    for k=1:nc/2 
+        % Chon ngau nhien the he cha me de lai giong
+        % Select Parents Indices
+        i1=RouletteWheelSelection(P);   % Gen cua cha
+        i2=RouletteWheelSelection(P);   % Gen cua me
+        p1=pop(i1);                     % Lay Gen cua cha
+        p2=pop(i2);                     % Lay Gen cua cha
+        
+        % Apply Crossover
+        % Lai cheo 
+        [pop_crossover(k,1).Position, pop_crossover(k,2).Position]=Crossover2(p1.Position,p2.Position,gamma_ga,VarMin,VarMax,nVar);
+        
+        % Evaluate Offsprings
+        pop_crossover(k,1).Cost=CostFunction(pop_crossover(k,1).Position);
+        pop_crossover(k,2).Cost=CostFunction(pop_crossover(k,2).Position);        
+    end    
+    
+    % Lay tat ca gia tri vua roi xep theo 1 hang doc
+    pop_crossover=pop_crossover(:);
+
+    % Dot Bien
+    pop_mutation=repmat(empty_individual,nm,1);
+    
+    for k=1:nm
+        
+        % Lua chon cha me
+        i=randi([1 nPop]);
+        p=pop(i);
+        
+        % Apply Mutation
+        pop_mutation(k).Position=Mutate2(p.Position,mu,VarMin,VarMax,nVar);
+        
+        % Evaluate Mutant
+        pop_mutation(k).Cost=CostFunction(pop_mutation(k).Position);
+        
+    end
+    
+
+
+    % Gop toan bo dan so vao
+    pop=[pop
+        pop_crossover
+        pop_mutation];  %ok
+    
+    % Sap xep lai dan so
+    Costs=[pop.Cost];
+    [Costs, SortOrder]=sort(Costs);
+    pop=pop(SortOrder);
+    
+    % Tim gia tri xau nhat
+    WorstCost=max(WorstCost,pop(end).Cost);
+    
+    % Cat Giam
+    pop=pop(1:nPop);
+    Costs=Costs(1:nPop);
+    
+    % Tap hop nhung gia tri tot nhat tim duoc
+    BestSol=pop(1);
+
+    % Tap hop nhung gia tri tot nhat tim duoc
+    for i=1:nPop
+%         Neu gia tri cua tap hop nho hon gia tri cua hat
+        if pop(i).Cost < particle(i).Best.Cost
+%             Cap nhat vi tri va gia tri cua hat
+            particle(i).Best.Position = pop(i).Position;
+            particle(i).Best.Cost = pop(i).Cost;
+            if  particle(i).Best.Cost < GlobalBest.Cost
+                GlobalBest=particle(i).Best;
+            end
+        end
+    end
+    
+% calculating tolerance    
+    if generation>100
+    tolerance=abs(BestCost((generation-100),1)-GlobalBest.Cost);
+    end
+    
+    BestCost(generation,1)=GlobalBest.Cost;       
+    disp(['Iteration ' num2str(generation) ':---------Best Cost = ' num2str(BestCost(generation,1))]);
+    FinalCost = GlobalBest.Cost;
+FinalPosition = GlobalBest.Position;
+end
+ xo = FinalPosition(1,:);
+    xbest = xo; 
+    ybest = FinalCost;
+%--------------------------------------------------------------
+    disp('Waiting for completing final nn model is net_f...')
+ net.divideParam.trainRatio = 70/100;
+net.divideParam.valRatio = 15/100;
+net.divideParam.testRatio = 15/100;
+trainFcn = 'trainlm';  % Levenberg-Marquardt backpropagation.
+net_f=feedforwardnet(number_hidden,trainFcn); 
+    net_f=configure(net_f,inputs,targets); 
+    [a, b]=min(ybest); 
+    xo=xbest(b,:);
+    k=0; 
+    % m*n
+    xi=zeros(number_hidden,number_input);
+    for i=1:number_hidden 
+        for j=1:number_input 
+            k=k+1;
+            xi(i,j)=xo(k); 
+        end
+    end
+    % o*n
+    xl=zeros(number_output,number_hidden);
+    for i=1:number_hidden 
+        for j=1:number_output 
+        k=k+1;
+        xl(j,i)=xo(k); 
+        end
+    end
+    % n
+    xb1=zeros(number_hidden,1);
+    for i=1:number_hidden 
+        k=k+1; 
+        xb1(i,1)=xo(k); 
+    end
+    % o
+    xb2=zeros(number_output,1);
+    for i=1:number_output 
+        k=k+1; 
+        xb2(i,1)=xo(k);
+    end
+    net_f.IW{1,1}=xi; 
+    net_f.LW{2,1}=xl; 
+    net_f.b{1,1}=xb1; 
+    net_f.b{2,1}=xb2; 
+    
+    %Calculation of MSE 
+    err=sum((net_f(inputs)-targets).^2)/length(net_f(inputs)) 
+    net_f.trainParam.epochs = 1000;
+    [net_f] = train(net_f,inputs,targets);
+
+    % You can get all weight and bias of this line
+    weight_bias=getwb(net_f);
+
+    % Regression plot 
+%     figure(2);
+%     plotregression(targets,net_f(inputs)) 
+%     disp('Complete Final model net_f')
+%     disp('Thank you for your waiting')
+    
+%% Test
+disp('Testing out put....')
+Test_ouputs1=net_f(inputs);
+Test_ouputs1 = [Test_ouputs1
+    targets];
+%
+% This code line only use for 1 oupput
+Test_ouputs2=net_f(inputs11);
+Test_ouputs2 = [Test_ouputs2
+    targets11];
+%%
+x=inputs;
+t = targets;
+y = net_f(x);
+perf = perform(net_f,t,y)
+%---------------------------------------------------------
+nntraintool('plot','plotregression')
+set(findall(gcf,'-property','FontSize'),'FontSize',10)
+for i1 = 1:4
+  subplot(2,2,i1)
+  grid on
+end
+nntraintool('plot','plotperform')
+set(findall(gcf,'-property','FontSize'),'FontSize',10)
+grid on;
+nntraintool('plot','plottrainstate')
+set(findall(gcf,'-property','FontSize'),'FontSize',10)
+grid on;
+nntraintool('plot','ploterrhist')
+set(findall(gcf,'-property','FontSize'),'FontSize',10)
+grid on;
+timeElapsed = toc
