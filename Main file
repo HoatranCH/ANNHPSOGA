@@ -1,64 +1,52 @@
-%% empty space 
+clc;clear;
 clc 
 clear
 tic 
 rng default
-% check data without training
-% This code line only use for 1 oupput
-filename1 = 'Case1_test.xlsx';
-sheetname11 = 'Sheet1'; 
-sheetname22 = 'Sheet2';
-input11 = xlsread(filename1,sheetname11,'A1:Z40000'); 
-target11 = xlsread(filename1,sheetname22,'A1:Z40000');
-inputs11=input11';
-targets11=target11';
-%
-%%
-filename = 'Case1a.xlsx';
+filename = 'datafile.xlsx';
 sheetname1 = 'Sheet1'; 
 sheetname2 = 'Sheet2'; 
-input = xlsread(filename,sheetname1,'A1:Z40000'); 
-target = xlsread(filename,sheetname2,'A1:Z40000'); 
-% x = awgn(inputs,86.37455,'measured');
-inputs=awgn(input',105,'measured');
+input = xlsread(filename,sheetname1,'A1:Z10000'); 
+target = xlsread(filename,sheetname2,'A1:Z10000'); 
+inputs=input';
 targets=target';
 number_input=length(inputs(:,1));
 number_output=length(targets(:,1));
-number_hidden=20; 
-
-%% Feedforwardnet method
-% 
-net=feedforwardnet(number_hidden); 
+number_hidden=5; 
+%% Feed Resources
+net=feedforwardnet(number_hidden); % Dat an cho mang neural
 net=configure(net,inputs,targets); 
+kk=number_input*number_hidden+number_hidden+number_hidden+number_output; % tinh toan khoi luong bien
 
-%% This line will check numWeightElements(nWE)
-nWE=number_hidden*number_input+number_output*number_hidden+number_hidden+number_output; 
-
-CostFunction=@(x) CostFunction_IBeam_2output(x,number_hidden,number_input,number_output,net,inputs,targets);
+CostFunction=@(x) myfunc(x,number_hidden,number_input,number_output,net,inputs,targets);
 
 tic;
 %% Initialization Boundary of weight, b ,.. sigmoid
-Boundary = zeros (nWE,2);
-for i = 1:nWE
-Boundary(i,1)=-1;
-Boundary(i,2)=1;
+for i = 1:kk
+Boundary(i,1)=-1.5;
+Boundary(i,2)=1.5;
 end
-%% Parameters
-MaxIt=100;
-% MaxIt=200;
-nPop=100;
+nVar=size(Boundary,1);
 
-%% CS Parameters
-% Discovery rate of alien eggs/solutions
-pa=0.25;
-nVar=length(Boundary); % khong gian tim kiem
 VarSize=[1 nVar];
-VarMax=Boundary(:,2);
+
 VarMin=Boundary(:,1);
+VarMax=Boundary(:,2);
+VelMax=0.1*(VarMax-VarMin); % velocity max
+VelMin=-VelMax;             % velocity max
+MaxIt=100;
+nPop=10;
+
+%% PSO Parameters
+w=1;            % Inertia Weight
+wdamp=0.99;     % Inertia Weight Damping Ratio
+c1=1.5;         % Personal Learning Coefficient
+c2=2.0;         % Global Learning Coefficient
+
 %% GA parameters
 pc=0.7;                 % Crossover Percentage, Phan tram lai cheo
 nc=2*round(pc*nPop/2);  % Number of Offsprings (also Parnets), So phan tu duoc phep lai cheo
-gamma_ga=0.4;              % Extra Range Factor for Crossover
+gamma=0.4;              % Extra Range Factor for Crossover
 
 pm=0.3;                 % Mutation Percentage
 nm=round(pm*nPop);      % Number of Mutants
@@ -131,89 +119,9 @@ BestCost=zeros(MaxIt,1);
 % Gia tri xau nhat
 WorstCost=pop(end).Cost;        
 
-generation=0;    
-tolerance=1;
-while generation<MaxIt && tolerance>10^-12
-generation=generation+1;
- %%   
-    % Su dung CS tao ra dan so cua GA
-    % Get new solution but keep current best
-    % Levy exponent and coefficient
-    % For details, see equation (2.21), Page 16 (chapter 2) of the book
-    % X. S. Yang, Nature-Inspired Metaheuristic Algorithms, 2nd Edition, Luniver Press, (2010).
-    beta_CS=3/2;
-    sigma_CS=(gamma(1+beta_CS)*sin(pi*beta_CS/2)/(gamma((1+beta_CS)/2)*beta_CS*2^((beta_CS-1)/2)))^(1/beta_CS);
-%     sigma_CS=0.6966;
-    for i = 1:nPop
-    nest(i,:) = vertcat(particle(i).Best.Position);
-    end
-    for i = 1 : nPop
-        s=nest(i,:);
-        u=randn(size(s))*sigma_CS;
-        v=randn(size(s));
-        step=u./abs(v).^(1/beta_CS); 
-        stepsize=0.01*step.*(s-GlobalBest.Position);
-        % Now the actual random walks or flights
-        % Update Position
-        s=s+stepsize.*randn(size(s)); 
-        
-        % Apply limit Position
-        for j = 1:nVar
-        s(1,j) = max(s(1,j),VarMin(j,1));
-        s(1,j) = min(s(1,j),VarMax(j,1));
-        end
-        
-        particle(i).New.Position=s;
-        particle(i).New.Cost=CostFunction(particle(i).New.Position);
-        if particle(i).New.Cost < particle(i).Best.Cost
-            particle(i).Best=particle(i).New;
-            if particle(i).Best.Cost < GlobalBest.Cost
-                GlobalBest=particle(i).Best;
-            end
-        end
-    end
-    % Discovery and randomization
-    for i = 1:nPop
-    nest(i,:) = vertcat(particle(i).Best.Position);
-    end
-    % Discovered or not -- a status vector
-    K=rand(size(nest))>pa;
-    % New solution by biased/selective random walks
-    stepsize=rand*(nest(randperm(nPop),:)-nest(randperm(nPop),:));
-    % Update Position
-    new_nest=nest+stepsize.*K;
-    for i = 1:nPop
-        s=new_nest(i,:);
-        % Apply Limits
-        for j = 1:nVar
-        s(1,j) = max(s(1,j),VarMin(j,1));
-        s(1,j) = min(s(1,j),VarMax(j,1));
-        end
-        particle(i).New.Position=s;
-        % Evaluate
-        particle(i).New.Cost=CostFunction(particle(i).New.Position);
-        if particle(i).New.Cost < particle(i).Best.Cost
-            particle(i).Best=particle(i).New;
-            if particle(i).Best.Cost < GlobalBest.Cost
-                GlobalBest=particle(i).Best;
-            end
-        end
-    end
-        % Cap nhat tro lai cho dan so
-    for i=1:nPop
-        if particle(i).Best.Cost < pop(i).Cost
-            pop(i).Position = particle(i).Best.Position;
-            pop(i).Cost = particle(i).Best.Cost;
-            if pop(i).Cost<GlobalBest.Cost
-                GlobalBest.Cost=pop(i).Cost;
-                GlobalBest.Position=pop(i).Position;
-            end
-        end
-    end
-
-%-------------------------------End Cuckoo Search-------------------------------------------%    
-%%
-%-----------------------------------Start GA -----------------------------------------------%
+maxrun=1; 
+for run=1:maxrun 
+for generation=1:MaxIt
 
     P=exp(-beta*Costs/WorstCost);   % p(0)=e^(-beta*Costs/WorstCost)
     P=P/sum(P);  
@@ -221,7 +129,8 @@ generation=generation+1;
     % Khoi tao kich thuoc ma tran population crossover theo hang
     pop_crossover=repmat(empty_individual,nc/2,2);
     % Chon 1 nua trong so phan tu duoc lai cheo
-    for k=1:nc/2 
+    for k=1:nc/2
+        
         % Chon ngau nhien the he cha me de lai giong
         % Select Parents Indices
         i1=RouletteWheelSelection(P);   % Gen cua cha
@@ -231,11 +140,12 @@ generation=generation+1;
         
         % Apply Crossover
         % Lai cheo 
-        [pop_crossover(k,1).Position, pop_crossover(k,2).Position]=Crossover2(p1.Position,p2.Position,gamma_ga,VarMin,VarMax,nVar);
+        [pop_crossover(k,1).Position, pop_crossover(k,2).Position]=Crossover(p1.Position,p2.Position,gamma,VarMin,VarMax,nVar);
         
         % Evaluate Offsprings
         pop_crossover(k,1).Cost=CostFunction(pop_crossover(k,1).Position);
-        pop_crossover(k,2).Cost=CostFunction(pop_crossover(k,2).Position);        
+        pop_crossover(k,2).Cost=CostFunction(pop_crossover(k,2).Position);
+        
     end    
     
     % Lay tat ca gia tri vua roi xep theo 1 hang doc
@@ -251,7 +161,7 @@ generation=generation+1;
         p=pop(i);
         
         % Apply Mutation
-        pop_mutation(k).Position=Mutate2(p.Position,mu,VarMin,VarMax,nVar);
+        pop_mutation(k).Position=Mutate(p.Position,mu,VarMin,VarMax,nVar);
         
         % Evaluate Mutant
         pop_mutation(k).Cost=CostFunction(pop_mutation(k).Position);
@@ -279,120 +189,132 @@ generation=generation+1;
     
     % Tap hop nhung gia tri tot nhat tim duoc
     BestSol=pop(1);
-
+    
     % Tap hop nhung gia tri tot nhat tim duoc
     for i=1:nPop
 %         Neu gia tri cua tap hop nho hon gia tri cua hat
-        if pop(i).Cost < particle(i).Best.Cost
+        if pop(i).Cost<=particle(i).Cost
 %             Cap nhat vi tri va gia tri cua hat
-            particle(i).Best.Position = pop(i).Position;
-            particle(i).Best.Cost = pop(i).Cost;
-            if  particle(i).Best.Cost < GlobalBest.Cost
-                GlobalBest=particle(i).Best;
-            end
+            particle(i).Position = pop(i).Position;
+            particle(i).Cost = pop(i).Cost;
         end
+        % cap nhat
+        Cx(i) = particle(i).Cost;
     end
     
-% calculating tolerance    
-    if generation>100
-    tolerance=abs(BestCost((generation-100),1)-GlobalBest.Cost);
+    % Trong so cac hat cua lay gia tri tot nhat cho the he thu it
+    [BestCost(generation),r]=min(Cx);
+    GlobalBest.Cost=particle(r).Cost;
+    GlobalBest.Position=particle(r).Position;
+    
+    BestCostGA(generation)=BestCost(generation);
+
+    
+    % Su dung PSO tinh toan vi tri tot nhat trong so cac gia tri tim duoc
+    % cua GA
+        for i=1:nPop
+            
+          particle(i).Velocity = w*particle(i).Velocity ...
+            +c1*rand(VarSize).*(particle(i).Best.Position-particle(i).Position) ...
+            +c2*rand(VarSize).*(GlobalBest.Position-particle(i).Position);
+
+        % Gioi han toc do cho vector
+            for j=1:nVar
+                particle(i).Velocity(1,j) = max(particle(i).Velocity(1,j),VelMin(j,1));
+                particle(i).Velocity(1,j) = min(particle(i).Velocity(1,j),VelMax(j,1));
+            end
+            
+        % Cap nhat vi tri cua hat
+        particle(i).Position = particle(i).Position + particle(i).Velocity;
+        
+        % Velocity Mirror Effect
+            for j =1 : nVar
+                IsOutside(1,j)=(particle(i).Position(1,j)<VarMin(j,1) | particle(i).Position(1,j)>VarMax(j,1));
+            end
+                particle(i).Velocity(IsOutside)=-particle(i).Velocity(IsOutside);
+        
+        % Apply Position Limits
+            for j =1 : nVar
+                particle(i).Position(1,j) = max(particle(i).Position(1,j),VarMin(j,1));
+                particle(i).Position(1,j) = min(particle(i).Position(1,j),VarMax(j,1));
+            end
+        % Tinh toan gia tri cua gat
+        particle(i).Cost = CostFunction(particle(i).Position);
+
+            % Cap nhat vi tri tot nhat
+            if particle(i).Cost<particle(i).Best.Cost
+
+                particle(i).Best.Position=particle(i).Position;
+                particle(i).Best.Cost=particle(i).Cost;
+
+                % Cap nhat vi tri tot nhat toan cau
+                if particle(i).Best.Cost<GlobalBest.Cost
+
+                    GlobalBest=particle(i).Best;
+
+                end
+
+            end
+        
+        end
+        % Cap nhat tro lai cho dan so
+    for i=1:nPop
+        if particle(i).Cost<=pop(i).Cost
+            pop(i).Position = particle(i).Position;
+            pop(i).Cost = particle(i).Cost;
+            
+        end
+        Cx(i)=pop(i).Cost;
     end
     
-    BestCost(generation,1)=GlobalBest.Cost;       
-    disp(['Iteration ' num2str(generation) ':---------Best Cost = ' num2str(BestCost(generation,1))]);
-    FinalCost = GlobalBest.Cost;
-FinalPosition = GlobalBest.Position;
+    [BestCost(generation),r]=min(Cx);
+    GlobalBest.Cost=pop(r).Cost;
+    GlobalBest.Position=pop(r).Position; 
+    
+    BestCost(generation);       
+    disp(['Iteration ' num2str(generation) ': Best Cost = ' num2str(BestCost(generation))]);
+    w=w*wdamp;       
+            
+
 end
- xo = FinalPosition(1,:);
-    xbest = xo; 
-    ybest = FinalCost;
-%--------------------------------------------------------------
-    disp('Waiting for completing final nn model is net_f...')
- net.divideParam.trainRatio = 70/100;
-net.divideParam.valRatio = 15/100;
-net.divideParam.testRatio = 15/100;
-trainFcn = 'trainlm';  % Levenberg-Marquardt backpropagation.
-net_f=feedforwardnet(number_hidden,trainFcn); 
+        xo=GlobalBest.Position; 
+        fval=CostFunction(xo); 
+        xbest(run,:)=xo;
+        ybest(run,1)=CostFunction(xo); 
+end
+    disp('Final nn model is net_f') 
+    net_f=feedforwardnet(number_hidden); 
     net_f=configure(net_f,inputs,targets); 
-    [a, b]=min(ybest); 
+    [a b]=min(ybest); 
     xo=xbest(b,:);
     k=0; 
-    % m*n
-    xi=zeros(number_hidden,number_input);
     for i=1:number_hidden 
         for j=1:number_input 
             k=k+1;
             xi(i,j)=xo(k); 
         end
     end
-    % o*n
-    xl=zeros(number_output,number_hidden);
     for i=1:number_hidden 
-        for j=1:number_output 
         k=k+1;
-        xl(j,i)=xo(k); 
-        end
+        xl(i)=xo(k); % lay tu 40 45
+        xb1(i,1)=xo(k+number_hidden); % lay tu 45 den 50
     end
-    % n
-    xb1=zeros(number_hidden,1);
-    for i=1:number_hidden 
-        k=k+1; 
-        xb1(i,1)=xo(k); 
-    end
-    % o
-    xb2=zeros(number_output,1);
     for i=1:number_output 
         k=k+1; 
         xb2(i,1)=xo(k);
     end
-    net_f.IW{1,1}=xi; 
-    net_f.LW{2,1}=xl; 
+    net_f.iw{1,1}=xi; 
+    net_f.lw{2,1}=xl; 
     net_f.b{1,1}=xb1; 
     net_f.b{2,1}=xb2; 
-    
     %Calculation of MSE 
     err=sum((net_f(inputs)-targets).^2)/length(net_f(inputs)) 
-    net_f.trainParam.epochs = 1000;
-    [net_f] = train(net_f,inputs,targets);
-
-    % You can get all weight and bias of this line
-    weight_bias=getwb(net_f);
-
-    % Regression plot 
-%     figure(2);
-%     plotregression(targets,net_f(inputs)) 
-%     disp('Complete Final model net_f')
-%     disp('Thank you for your waiting')
-    
-%% Test
-disp('Testing out put....')
-Test_ouputs1=net_f(inputs);
-Test_ouputs1 = [Test_ouputs1
-    targets];
-%
-% This code line only use for 1 oupput
-Test_ouputs2=net_f(inputs11);
-Test_ouputs2 = [Test_ouputs2
-    targets11];
-%%
-x=inputs;
-t = targets;
-y = net_f(x);
-perf = perform(net_f,t,y)
-%---------------------------------------------------------
-nntraintool('plot','plotregression')
-set(findall(gcf,'-property','FontSize'),'FontSize',10)
-for i1 = 1:4
-  subplot(2,2,i1)
-  grid on
-end
-nntraintool('plot','plotperform')
-set(findall(gcf,'-property','FontSize'),'FontSize',10)
-grid on;
-nntraintool('plot','plottrainstate')
-set(findall(gcf,'-property','FontSize'),'FontSize',10)
-grid on;
-nntraintool('plot','ploterrhist')
-set(findall(gcf,'-property','FontSize'),'FontSize',10)
-grid on;
-timeElapsed = toc
+    %Regression plot 
+    plotregression(targets,net_f(inputs)) 
+    disp('Hoan thanh tinh toan cac thong so cho Artifical Neural Network');
+% toc;
+% figure;
+% semilogy(BestCost,'-ro','LineWidth',2);
+% xlabel('Iteration');
+% ylabel('Best Cost');
+% grid on;
